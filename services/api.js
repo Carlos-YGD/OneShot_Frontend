@@ -2,8 +2,8 @@ import axios from "axios";
 import { useAuthStore } from "@/store/authStore";
 
 const api = axios.create({
-  baseURL: "/api", // same-origin now; Vercel will rewrite
-  withCredentials: true, // allow cookies
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  withCredentials: true,
 });
 
 let isRefreshing = false;
@@ -18,28 +18,17 @@ const processQueue = (error = null) => {
 };
 
 api.interceptors.request.use((config) => {
-  console.log("[api] request:", {
-    method: config.method,
-    url: config.url,
-    withCredentials: !!config.withCredentials,
-  });
+  console.log("[api] request:", { method: config.method, url: config.url, withCredentials: !!config.withCredentials });
   return config;
 });
 
 api.interceptors.response.use(
   (response) => {
-    console.log("[api] response:", {
-      status: response.status,
-      url: response.config.url,
-    });
+    console.log("[api] response:", { status: response.status, url: response.config.url });
     return response;
   },
   async (error) => {
-    console.log("[api] response error:", {
-      status: error.response?.status,
-      url: error.config?.url,
-      message: error.message,
-    });
+    console.log("[api] response error:", { status: error.response?.status, url: error.config?.url, message: error.message });
 
     const originalRequest = error.config;
     const { isLoggingOut } = useAuthStore.getState();

@@ -1,8 +1,0 @@
-{
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "https://dyvr49stm9di1.cloudfront.net/api/$1"
-    }
-  ]
-}
