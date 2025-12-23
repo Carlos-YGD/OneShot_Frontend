@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/api/:path*", 
-      "destination": "https://dyvr49stm9di1.cloudfront.net/api/:path*"
+      "source": "/api/(.*)",
+      "destination": "https://dyvr49stm9di1.cloudfront.net/api/$1"
     }
   ]
 }
