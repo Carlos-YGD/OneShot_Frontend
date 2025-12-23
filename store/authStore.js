@@ -1,71 +1,94 @@
 import { create } from "zustand";
 import api from "@/services/api";
 
-export const useAuthStore = create((set) => ({
+const LOCAL_STORAGE_KEY = "oneshot_auth";
+
+export const useAuthStore = create((set, get) => ({
   user: null,
+  access: null,
+  refresh: null,
   loading: false,
   error: null,
   isLoggingOut: false,
 
+  // Initialize store from localStorage
+  init: () => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (stored) {
+      const { user, access, refresh } = JSON.parse(stored);
+      set({ user, access, refresh });
+    }
+  },
+
+  saveTokens: () => {
+    const { user, access, refresh } = get();
+    if (typeof window !== "undefined") {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ user, access, refresh }));
+    }
+  },
+
+  clearTokens: () => {
+    if (typeof window !== "undefined") localStorage.removeItem(LOCAL_STORAGE_KEY);
+    set({ user: null, access: null, refresh: null });
+  },
+
   login: async (email, password) => {
-    console.log("[authStore] login: starting", { email });
     set({ loading: true, error: null });
     try {
       const res = await api.post("/users/login/", { email, password });
-      console.log("[authStore] login: response", { status: res.status, headers: res.headers && !!res.headers["set-cookie"] });
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const { data } = await api.get("/users/profile/");
-      console.log("[authStore] login: profile fetched", { id: data?.id, username: data?.username });
-      set({ user: data, loading: false });
+      const { user, access, refresh } = res.data;
+
+      set({ user, access, refresh, loading: false });
+      get().saveTokens();
       window.location.replace("/profile");
       return true;
     } catch (err) {
-      console.log("[authStore] login: failed", err?.response?.status || err?.message);
-      set({ error: "Invalid credentials", loading: false });
+      set({ error: err.response?.data?.detail || "Invalid credentials", loading: false });
       return false;
-    }
-  },
-
-  logout: async () => {
-    set({ isLoggingOut: true, user: null });
-    try {
-      await api.post("/users/logout/");
-    } catch (e) {
-      console.log("[authStore] logout failed:", e);
-    } finally {
-      set({ isLoggingOut: false });
-      window.location.replace("/login");
-    }
-  },
-
-  fetchProfile: async () => {
-    const { isLoggingOut } = useAuthStore.getState();
-    if (isLoggingOut) {
-      console.log("[authStore] fetchProfile: skipped due to logout");
-      return;
-    }
-    try {
-      const { data, status } = await api.get("/users/profile/");
-      console.log("[authStore] fetchProfile: success", { status, id: data?.id });
-      set({ user: data });
-    } catch (err) {
-      console.log("[authStore] fetchProfile: failed", { status: err.response?.status, data: err.response?.data });
-      set({ user: null });
     }
   },
 
   register: async (email, username, password) => {
     set({ loading: true, error: null });
     try {
-      await api.post("/users/register/", { email, username, password });
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const { data } = await api.get("/users/profile/");
-      set({ user: data, loading: false });
+      const res = await api.post("/users/register/", { email, username, password });
+      const { user, access, refresh } = res.data;
+
+      set({ user, access, refresh, loading: false });
+      get().saveTokens();
       window.location.replace("/profile");
       return true;
     } catch (err) {
-      set({ error: "Registration failed", loading: false });
+      set({ error: err.response?.data?.detail || "Registration failed", loading: false });
       return false;
+    }
+  },
+
+  logout: async () => {
+    set({ isLoggingOut: true });
+    try {
+      const { refresh } = get();
+      await api.post("/users/logout/", { refresh });
+    } catch (err) {
+      console.log("[authStore] logout failed:", err);
+    } finally {
+      get().clearTokens();
+      set({ isLoggingOut: false });
+      window.location.replace("/login");
+    }
+  },
+
+  fetchProfile: async () => {
+    const { isLoggingOut } = get();
+    if (isLoggingOut) return;
+
+    try {
+      const { data } = await api.get("/users/profile/");
+      set({ user: data });
+      get().saveTokens();
+    } catch (err) {
+      set({ user: null });
     }
   },
 
@@ -74,6 +97,7 @@ export const useAuthStore = create((set) => ({
     try {
       const { data } = await api.patch("/users/profile/edit/", { username });
       set((state) => ({ user: { ...state.user, username: data.username }, loading: false }));
+      get().saveTokens();
       return true;
     } catch (err) {
       set({ error: err.response?.data?.username?.[0] || "Failed to update username", loading: false });
@@ -87,6 +111,7 @@ export const useAuthStore = create((set) => ({
       await api.post("/users/stats/reset/");
       const { data } = await api.get("/users/profile/");
       set({ user: data, loading: false });
+      get().saveTokens();
       return true;
     } catch (err) {
       set({ error: "Failed to reset stats", loading: false });
@@ -94,18 +119,15 @@ export const useAuthStore = create((set) => ({
     }
   },
 
-    deleteAccount: async () => {
+  deleteAccount: async () => {
     set({ loading: true, error: null });
-
     try {
       await api.delete("/users/delete/");
-      set({ user: null, loading: false });
+      get().clearTokens();
+      set({ loading: false });
       return true;
     } catch (err) {
-      set({
-        error: err.response?.data?.detail || "Failed to delete account",
-        loading: false,
-      });
+      set({ error: err.response?.data?.detail || "Failed to delete account", loading: false });
       return false;
     }
   },
@@ -119,3 +141,8 @@ export const useAuthStore = create((set) => ({
     }
   },
 }));
+
+// Call init() once on app startup
+if (typeof window !== "undefined") {
+  useAuthStore.getState().init();
+}
