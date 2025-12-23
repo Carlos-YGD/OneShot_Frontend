@@ -11,40 +11,54 @@ export const useAuthStore = create((set, get) => ({
   error: null,
   isLoggingOut: false,
 
-  // Initialize store from localStorage
-  init: () => {
+  // -------------------------
+  // Helpers for persistence
+  // -------------------------
+  saveTokens: () => {
+    const { user, access, refresh } = get();
+    localStorage.setItem(
+      LOCAL_STORAGE_KEY,
+      JSON.stringify({ user, access, refresh })
+    );
+  },
+
+  clearTokens: () => {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    set({ user: null, access: null, refresh: null });
+  },
+
+  init: async () => {
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (stored) {
       const { user, access, refresh } = JSON.parse(stored);
       set({ user, access, refresh });
+      if (access) {
+        try {
+          const { data } = await api.get("/users/profile/");
+          set({ user: data });
+          get().saveTokens();
+        } catch (err) {
+          get().clearTokens();
+        }
+      }
     }
   },
 
-  saveTokens: () => {
-    const { user, access, refresh } = get();
-    if (typeof window !== "undefined") {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ user, access, refresh }));
-    }
-  },
-
-  clearTokens: () => {
-    if (typeof window !== "undefined") localStorage.removeItem(LOCAL_STORAGE_KEY);
-    set({ user: null, access: null, refresh: null });
-  },
-
+  // -------------------------
+  // Auth actions
+  // -------------------------
   login: async (email, password) => {
     set({ loading: true, error: null });
     try {
       const res = await api.post("/users/login/", { email, password });
       const { user, access, refresh } = res.data;
-
       set({ user, access, refresh, loading: false });
       get().saveTokens();
       window.location.replace("/profile");
       return true;
     } catch (err) {
-      set({ error: err.response?.data?.detail || "Invalid credentials", loading: false });
+      set({ error: "Invalid credentials", loading: false });
       return false;
     }
   },
@@ -54,22 +68,20 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await api.post("/users/register/", { email, username, password });
       const { user, access, refresh } = res.data;
-
       set({ user, access, refresh, loading: false });
       get().saveTokens();
       window.location.replace("/profile");
       return true;
     } catch (err) {
-      set({ error: err.response?.data?.detail || "Registration failed", loading: false });
+      set({ error: "Registration failed", loading: false });
       return false;
     }
   },
 
   logout: async () => {
-    set({ isLoggingOut: true });
+    set({ isLoggingOut: true, user: null });
     try {
-      const { refresh } = get();
-      await api.post("/users/logout/", { refresh });
+      await api.post("/users/logout/");
     } catch (err) {
       console.log("[authStore] logout failed:", err);
     } finally {
@@ -80,9 +92,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   fetchProfile: async () => {
-    const { isLoggingOut } = get();
-    if (isLoggingOut) return;
-
+    if (get().isLoggingOut) return;
     try {
       const { data } = await api.get("/users/profile/");
       set({ user: data });
@@ -127,7 +137,10 @@ export const useAuthStore = create((set, get) => ({
       set({ loading: false });
       return true;
     } catch (err) {
-      set({ error: err.response?.data?.detail || "Failed to delete account", loading: false });
+      set({
+        error: err.response?.data?.detail || "Failed to delete account",
+        loading: false,
+      });
       return false;
     }
   },
@@ -142,7 +155,9 @@ export const useAuthStore = create((set, get) => ({
   },
 }));
 
-// Call init() once on app startup
+// -------------------------
+// Initialize on load
+// -------------------------
 if (typeof window !== "undefined") {
   useAuthStore.getState().init();
 }
