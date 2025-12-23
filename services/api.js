@@ -2,7 +2,7 @@ import axios from "axios";
 import { useAuthStore } from "@/store/authStore";
 
 const api = axios.create({
-  baseURL: "https://dyvr49stm9di1.cloudfront.net",
+  baseURL: "https://dyvr49stm9di1.cloudfront.net/api",
   withCredentials: true,
 });
 
