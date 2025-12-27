@@ -58,10 +58,22 @@ export const useAuthStore = create((set, get) => ({
       window.location.replace("/profile");
       return true;
     } catch (err) {
-      set({ error: "Invalid credentials", loading: false });
+      let message = "Login failed";
+
+      const data = err.response?.data;
+      if (data) {
+        if (typeof data.error === "string") {
+          message = data.error;
+        } else {
+          message = Object.values(data).flat().join(" ");
+        }
+      }
+
+      set({ error: message, loading: false });
       return false;
     }
   },
+
 
   register: async (email, username, password) => {
     set({ loading: true, error: null });
