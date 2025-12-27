@@ -66,17 +66,32 @@ export const useAuthStore = create((set, get) => ({
   register: async (email, username, password) => {
     set({ loading: true, error: null });
     try {
-      const res = await api.post("/users/register/", { email, username, password });
+      const res = await api.post("/users/register/", {
+        email,
+        username,
+        password,
+      });
+
       const { user, access, refresh } = res.data;
       set({ user, access, refresh, loading: false });
       get().saveTokens();
       window.location.replace("/profile");
       return true;
     } catch (err) {
-      set({ error: "Registration failed", loading: false });
+      let message = "Registration failed";
+
+      const data = err.response?.data;
+      if (data) {
+        message = Object.values(data)
+          .flat()
+          .join(" ");
+      }
+
+      set({ error: message, loading: false });
       return false;
     }
   },
+
 
   logout: async () => {
     set({ isLoggingOut: true, user: null });
