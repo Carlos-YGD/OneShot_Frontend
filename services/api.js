@@ -21,36 +21,44 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    const { isLoggingOut } = useAuthStore.getState();
+    const status = error.response?.status;
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isLoggingOut) {
-      originalRequest._retry = true;
+    const { isLoggingOut, refresh, clearTokens } = useAuthStore.getState();
 
+    if (originalRequest?.url?.includes("/users/refresh/")) {
+      clearTokens();
+      window.location.replace("/login");
+      return Promise.reject(error);
+    }
+
+    if (!refresh) {
+      clearTokens();
+      window.location.replace("/login");
+      return Promise.reject(error);
+    }
+
+    if (status === 401 && !originalRequest._retry && !isLoggingOut) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then(() => api(originalRequest));
       }
 
+      originalRequest._retry = true;
       isRefreshing = true;
 
-      return new Promise((resolve, reject) => {
-        api
-          .post("/users/refresh/")
-          .then(() => {
-            processQueue();
-            resolve(api(originalRequest));
-          })
-          .catch((err) => {
-            processQueue(err);
-            useAuthStore.getState().clearTokens();
-            window.location.href = "/login";
-            reject(err);
-          })
-          .finally(() => {
-            isRefreshing = false;
-          });
-      });
+      try {
+        await api.post("/users/refresh/", { refresh });
+        processQueue();
+        return api(originalRequest);
+      } catch (err) {
+        processQueue(err);
+        clearTokens();
+        window.location.replace("/login");
+        return Promise.reject(err);
+      } finally {
+        isRefreshing = false;
+      }
     }
 
     return Promise.reject(error);
@@ -59,13 +67,25 @@ api.interceptors.response.use(
 
 export const login = async (email, password) => {
   const res = await api.post("/users/login/", { email, password });
-  useAuthStore.setState({ user: res.data.user });
+  useAuthStore.setState({
+    user: res.data.user,
+    access: res.data.access,
+    refresh: res.data.refresh,
+  });
   return res.data;
 };
 
 export const register = async (email, username, password) => {
-  const res = await api.post("/users/register/", { email, username, password });
-  useAuthStore.setState({ user: res.data.user });
+  const res = await api.post("/users/register/", {
+    email,
+    username,
+    password,
+  });
+  useAuthStore.setState({
+    user: res.data.user,
+    access: res.data.access,
+    refresh: res.data.refresh,
+  });
   return res.data;
 };
 
@@ -75,7 +95,7 @@ export const logout = async () => {
   } catch (err) {}
   finally {
     useAuthStore.getState().clearTokens();
-    window.location.href = "/login";
+    window.location.replace("/login");
   }
 };
 
