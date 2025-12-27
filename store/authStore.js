@@ -27,23 +27,44 @@ export const useAuthStore = create((set, get) => ({
     set({ user: null, access: null, refresh: null });
   },
 
-  init: async () => {
+    init: async () => {
     if (typeof window === "undefined") return;
+
+    set({ loading: true });
+
     const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (stored) {
-      const { user, access, refresh } = JSON.parse(stored);
-      set({ user, access, refresh });
-      if (access) {
-        try {
-          const { data } = await api.get("/users/profile/");
-          set({ user: data });
-          get().saveTokens();
-        } catch (err) {
-          get().clearTokens();
-        }
-      }
+
+    if (!stored) {
+      set({ loading: false });
+      window.location.replace("/login");
+      return;
     }
+
+    const { user, access, refresh } = JSON.parse(stored);
+
+    if (!access || !refresh) {
+      get().clearTokens();
+      set({ loading: false });
+      window.location.replace("/login");
+      return;
+    }
+
+    set({ user, access, refresh });
+
+    try {
+      const { data } = await api.get("/users/profile/");
+      set({ user: data });
+      get().saveTokens();
+    } catch {
+      get().clearTokens();
+      set({ loading: false });
+      window.location.replace("/login");
+      return;
+    }
+
+    set({ loading: false });
   },
+
 
   // -------------------------
   // Auth actions
